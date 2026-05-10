@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Demo wrapper — dispatches to fixture files so the GIF can be regenerated
+# without auth or live API calls. Real CLI lives at ../dist/cadence.
+set -e
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+F="$DIR/fixtures"
+
+case "${1:-}" in
+  ""|--help|-h)        cat "$F/help.txt" ;;
+  --version|-V)        echo "0.1.0" ;;
+  tr|training-readiness) cat "$F/tr.txt" ;;
+  ts|training-status)  cat "$F/ts.txt" ;;
+  bb|body-battery)     cat "$F/bb.txt" ;;
+  sleep)               cat "$F/sleep.txt" ;;
+  status)              echo "Not logged in. Run: cadence login <email> <password>" ;;
+  *) echo "demo: unknown subcommand: $1" >&2; exit 1 ;;
+esac

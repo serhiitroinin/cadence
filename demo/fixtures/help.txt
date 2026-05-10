@@ -1,0 +1,178 @@
+Usage: cadence [options] [command]
+
+Garmin Connect data CLI — training, sleep, HRV, body battery, activities
+
+Options:
+  -V, --version                 output the version number
+  -h, --help                    display help for command
+
+Commands:
+  login <email> <password>      Login to Garmin Connect via SSO + OAuth token
+                                exchange
+  import-tokens [dir]           Import tokens from a garth/garmy directory
+                                (default: ~/.garmy)
+  status                        Check authentication status and token expiry
+  logout                        Remove all Garmin credentials from macOS
+                                Keychain
+  training-readiness|tr [days]  Training readiness score (0–100) with
+                                contributing factors
+  sleep [days]                  Sleep score (0–100), stages
+                                (REM/Deep/Light/Awake), duration
+  heart-rate|hr [days]          Resting heart rate, daily min/max, 7-day average
+  hrv [days]                    Heart rate variability — nightly avg, weekly
+                                avg, baseline, status
+  stress [days]                 Daily stress levels (0–100) with qualifier
+  body-battery|bb [days]        Body battery energy level (0–100): charge,
+                                drain, high, low, wake value
+  steps [days]                  Daily step count, distance, goal progress,
+                                floors climbed
+  activities [days]             Recent workouts: name, type, duration, distance,
+                                HR, calories, training effect
+  daily [days]                  Combined daily summary: steps, distance,
+                                calories, HR, stress, body battery, floors
+  vo2max [days]                 VO2 Max (ml/kg/min) for running and cycling,
+                                with fitness age
+  spo2 [days]                   Blood oxygen saturation — sleep SpO2 average,
+                                lowest, latest
+  respiration|resp [days]       Breathing rates — waking average, sleeping
+                                average, high, low
+  training-status|ts [days]     Training status (PEAKING/PRODUCTIVE/etc.), load
+                                focus, ACWR, VO2 Max
+  race-predictions|rp           Predicted race times for 5K, 10K, half marathon,
+                                marathon
+  weight [days]                 Body weight (kg), BMI, body fat %, muscle mass,
+                                bone mass, body water %
+  fitness-age|fa                Fitness age vs chronological age (based on VO2
+                                Max)
+  intensity|im [days]           Intensity minutes — moderate + vigorous activity
+                                minutes, weekly goal
+  endurance|es                  Endurance score (0–100) and classification
+  activity <id>                 Full detail of a specific activity — summary +
+                                splits + HR zones
+  records|prs                   Personal records — fastest times, farthest
+                                distances, most steps
+  gear                          Equipment tracking — shoes, bikes, and other
+                                gear with usage stats
+  overview [days]               Full dashboard — all core + advanced metrics in
+                                a single view
+  json <path> [params...]       Raw JSON from any Garmin Connect API endpoint
+  help [command]                display help for command
+
+OVERVIEW
+  Fetches health and fitness data live from the Garmin Connect API.
+  All credentials are stored in macOS Keychain (service: cadence).
+  All data commands accept an optional [days] argument (default: 7).
+  Output is formatted tables to stdout; use 'json' for raw API data.
+
+COMMAND CATEGORIES
+  Auth:
+    login <email> <pw>     Full SSO login (OAuth1 → SSO → OAuth2)
+    import-tokens [dir]    One-time migration from garth/garmy tokens
+    status                 Check token validity and expiry
+    logout                 Remove all credentials from Keychain
+
+  Core Health (default 7 days):
+    overview [days]        Full dashboard — all metrics in one view
+    training-readiness|tr  Readiness score + 5 contributing factors
+    sleep                  Sleep score, stages, duration
+    heart-rate|hr          Resting HR, min, max, 7-day average
+    hrv                    Heart rate variability + baseline + status
+    stress                 Average/max stress + qualifier
+    body-battery|bb        Energy level: charge, drain, high, low, wake
+    steps                  Steps, distance, goal, floors
+    activities             Recent workouts with HR, calories, AE/AnE
+    daily                  Combined daily summary (steps + HR + stress + BB)
+
+  Advanced Metrics:
+    vo2max [days]          VO2 Max running/cycling (default: 30 days)
+    spo2 [days]            Blood oxygen levels
+    respiration|resp       Breathing rates (waking + sleeping)
+    training-status|ts     Training status, load focus, ACWR
+    race-predictions|rp    Predicted race times (5K, 10K, half, marathon)
+    weight [days]          Body weight + composition (default: 30 days)
+    fitness-age|fa         Fitness age vs chronological age
+    intensity|im           Moderate + vigorous activity minutes
+    endurance|es           Endurance score + classification
+
+  Activity Drill-Down:
+    activity <id>          Full detail: splits, HR zones, pace, power, temp
+    records|prs            Personal records (fastest times, farthest distances)
+    gear                   Equipment tracking (shoes, etc.)
+
+  Raw API:
+    json <path> [k=v ...]  Raw JSON from any Garmin Connect API endpoint
+
+METRIC QUICK REFERENCE
+  Training Readiness (0–100):
+    75–100  HIGH/PRIME  — Body ready, push hard
+    50–74   MODERATE    — Normal training OK
+    25–49   LOW         — Reduce intensity, focus recovery
+    0–24    POOR        — Rest day recommended
+    Factors (each 0–100): sleep, hrv, recovery, load, stress
+
+  Body Battery (0–100):
+    75–100  High energy  — Demanding tasks and workouts OK
+    50–74   Moderate     — Normal activity
+    25–49   Low          — Lighter activity recommended
+    0–24    Very low     — Rest needed
+
+  Stress (0–100):
+    0–25    Rest         — Low/no stress
+    26–50   Low          — Manageable stress
+    51–75   Medium       — Elevated stress
+    76–100  High         — Very high stress
+
+  Training Status:
+    PEAKING         — Ideal race form
+    PRODUCTIVE      — Fitness improving
+    MAINTAINING     — Fitness stable
+    RECOVERY        — Light load, recovering
+    UNPRODUCTIVE    — Load not improving fitness
+    DETRAINING      — Load too low, fitness declining
+    OVERREACHING    — Load too high, overtraining risk
+
+  ACWR (Acute:Chronic Workload Ratio):
+    < 0.8   Undertraining  — Detraining risk
+    0.8–1.3 Sweet spot     — Optimal load balance
+    > 1.5   Danger zone    — Overreaching risk
+
+  HRV Status:
+    BALANCED        — Normal variability
+    UNBALANCED      — Below typical range
+    LOW             — Significantly below baseline
+
+  VO2 Max (ml/kg/min) — higher is better:
+    < 30    Low
+    30–39   Fair
+    40–49   Good
+    50–59   Excellent
+    60+     Elite
+
+  Sleep Score (0–100):
+    80–100  Excellent
+    60–79   Good
+    40–59   Fair
+    0–39    Poor
+
+  Aerobic Training Effect (AE) 0.0–5.0:
+    0.0–0.9  None
+    1.0–1.9  Minor
+    2.0–2.9  Maintaining
+    3.0–3.9  Improving
+    4.0–4.9  Highly improving
+    5.0      Overreaching
+
+  Anaerobic Training Effect (AnE) 0.0–5.0:
+    Same scale as AE but for anaerobic capacity
+
+EXAMPLES
+  cadence tr                   Last 7 days training readiness
+  cadence tr 1                 Today's readiness only
+  cadence bb 14                Two weeks of body battery
+  cadence overview             Full 7-day dashboard
+  cadence activities 30        Last 30 days of workouts
+  cadence activity 18765432    Full detail + splits + HR zones for activity
+  cadence vo2max 90            VO2 Max trend over 90 days
+  cadence weight 60            Weight history over 60 days
+  cadence ts 14                Training status + ACWR over 2 weeks
+  cadence json /fitnessstats   Raw JSON from any API path

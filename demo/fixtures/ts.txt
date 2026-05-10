@@ -1,0 +1,11 @@
+Training Status — last 7 days
+
+Date        Status      Focus          Acute  Chronic  ACWR  VO2
+──────────  ──────────  ─────────────  ─────  ───────  ────  ────
+2026-05-04  PRODUCTIVE  HIGH_AEROBIC   412    398      1.04  52.1
+2026-05-05  PRODUCTIVE  HIGH_AEROBIC   428    405      1.06  52.2
+2026-05-06  RECOVERY    LOW_AEROBIC    315    410      0.77  52.2
+2026-05-07  PRODUCTIVE  HIGH_AEROBIC   441    415      1.06  52.3
+2026-05-08  PRODUCTIVE  HIGH_AEROBIC   458    420      1.09  52.3
+2026-05-09  PRODUCTIVE  HIGH_AEROBIC   452    421      1.07  52.3
+2026-05-10  PRODUCTIVE  HIGH_AEROBIC   456    421      1.08  52.3

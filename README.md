@@ -4,6 +4,8 @@ A terminal CLI for [Garmin Connect](https://connect.garmin.com) — training rea
 
 The Garmin Connect API is undocumented and requires emulating the official mobile app's auth flow. `cadence` does the full SSO + OAuth1 + OAuth2 dance from scratch with zero external auth dependencies — no `garth` or `garmy` required.
 
+![demo](demo/demo.gif)
+
 ```
 $ cadence tr
 Training Readiness — last 7 days
