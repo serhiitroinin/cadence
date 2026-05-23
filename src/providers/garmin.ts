@@ -183,6 +183,39 @@ export const garminProvider: FitnessProvider = {
     return results.reverse();
   },
 
+  async recentHr() {
+    const displayName = await getDisplayName();
+    // Try today first, then yesterday — the watch may not have synced today yet.
+    for (const daysAgo of [0, 1]) {
+      const date = dateStr(daysAgo);
+      try {
+        const raw = await apiGet<any>(
+          `/wellness-service/wellness/dailyHeartRate/${displayName}`,
+          { date },
+        );
+        const values: [number, number | null][] = raw?.heartRateValues ?? [];
+        // heartRateValues is [[unix_ms, bpm|null], ...] at ~120s granularity.
+        // Walk backwards for the most recent non-null sample.
+        for (let i = values.length - 1; i >= 0; i--) {
+          const v = values[i];
+          if (!v) continue;
+          const [ts, bpm] = v;
+          if (bpm != null && Number.isFinite(bpm) && bpm > 0) {
+            const lagMs = Date.now() - ts;
+            return {
+              bpm,
+              timestamp: new Date(ts).toISOString(),
+              lagMinutes: Math.round((lagMs / 60000) * 10) / 10,
+            };
+          }
+        }
+      } catch {
+        // Try next day
+      }
+    }
+    return null;
+  },
+
   async hrv(days) {
     const results: HrvData[] = [];
     for (let i = 0; i < days; i++) {

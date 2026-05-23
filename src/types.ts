@@ -29,6 +29,14 @@ export interface HeartRate {
   avgRhr7d: number | null;
 }
 
+export interface LiveHeartRate {
+  bpm: number;
+  /** ISO 8601 UTC timestamp of the sample */
+  timestamp: string;
+  /** Minutes between the sample and now */
+  lagMinutes: number;
+}
+
 export interface HrvData {
   date: string;
   lastNightAvg: number | null;
@@ -234,6 +242,7 @@ export interface FitnessProvider {
   trainingReadiness(days: number): Promise<TrainingReadiness[]>;
   sleep(days: number): Promise<SleepData[]>;
   heartRate(days: number): Promise<HeartRate[]>;
+  recentHr(): Promise<LiveHeartRate | null>;
   hrv(days: number): Promise<HrvData[]>;
   stress(days: number): Promise<StressData[]>;
   bodyBattery(days: number): Promise<BodyBattery[]>;

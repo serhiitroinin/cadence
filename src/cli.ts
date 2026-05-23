@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { getSecret, hasSecret, deleteSecret } from "./lib/keychain.ts";
 import * as out from "./lib/output.ts";
 import { login, importTokens } from "./auth.ts";
+import { importFromLuff } from "./lib/import-luff.ts";
 import { garminProvider } from "./providers/garmin.ts";
 import type { FitnessProvider } from "./types.ts";
 
@@ -281,6 +282,34 @@ Example:
     out.success("All Garmin credentials removed from Keychain.");
   });
 
+program
+  .command("auth-import-from-luff")
+  .description("One-shot: copy Garmin auth from legacy luff-garmin Keychain entry")
+  .addHelpText("after", `
+Details:
+  For users migrating from the older 'garmin' CLI shipped via the luff
+  monorepo. Reads all credentials stored under the 'luff-garmin' Keychain
+  service and copies them to 'cadence'. Idempotent — re-run is safe.
+
+  The source entries are NOT deleted; remove them manually with:
+    security delete-generic-password -s luff-garmin -a <account>
+
+Example:
+  cadence auth-import-from-luff`)
+  .action(() => {
+    const { copied, missing } = importFromLuff();
+    if (copied.length === 0) {
+      out.error("No entries found under luff-garmin. Nothing to import.");
+      process.exit(1);
+    }
+    out.success(`Imported ${copied.length} entries from luff-garmin:`);
+    for (const k of copied) console.log(`  + ${k}`);
+    if (missing.length > 0) {
+      out.blank();
+      out.info(`Missing (not present in luff-garmin): ${missing.join(", ")}`);
+    }
+  });
+
 // ── Core data commands ──────────────────────────────────────────
 
 program
@@ -400,6 +429,58 @@ Examples:
         n(r.restingHr), n(r.minHr), n(r.maxHr), n(r.avgRhr7d),
       ]),
     );
+  });
+
+program
+  .command("hr-recent")
+  .alias("hrl")
+  .description("Latest heart rate sample from Garmin Connect (2-min granularity)")
+  .option("-w, --watch <seconds>", "poll every N seconds (Ctrl-C to stop)")
+  .option("--json", "emit JSON instead of formatted text")
+  .addHelpText("after", `
+Details:
+  Reads the timeseries embedded in /wellness-service/wellness/dailyHeartRate.
+  Samples land in batches of ~2 minutes when the watch syncs to phone via
+  Bluetooth. Lag depends on connectivity, not API limits.
+
+  Note: during an active activity the watch may hold samples until the
+  activity uploads. If lag stays above ~10 minutes, your watch is probably
+  not paired with phone or LiveTrack is needed for true real-time.
+
+Examples:
+  cadence hr-recent              One reading
+  cadence hrl -w 60              Poll every 60s
+  cadence hr-recent --json       JSON for scripting`)
+  .action(async (opts: { watch?: string; json?: boolean }) => {
+    const pollSeconds = opts.watch ? parseInt(opts.watch, 10) : 0;
+    const emitJson = !!opts.json;
+
+    const tick = async () => {
+      const r = await provider.recentHr();
+      if (!r) {
+        if (emitJson) out.json({ bpm: null, error: "no_samples_today" });
+        else out.info("No HR samples available today.");
+        return;
+      }
+      if (emitJson) {
+        out.json(r);
+        return;
+      }
+      const lagStr = r.lagMinutes < 1
+        ? "<1min"
+        : `${r.lagMinutes}min stale`;
+      const tsStr = new Date(r.timestamp).toLocaleTimeString();
+      console.log(`HR ${r.bpm} bpm @ ${tsStr} (${lagStr})`);
+    };
+
+    await tick();
+    if (pollSeconds > 0) {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        await new Promise((res) => setTimeout(res, pollSeconds * 1000));
+        await tick();
+      }
+    }
   });
 
 program
