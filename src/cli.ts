@@ -54,7 +54,7 @@ const program = new Command();
 program
   .name("cadence")
   .description("Garmin Connect data CLI — training, sleep, HRV, body battery, activities")
-  .version("0.1.0")
+  .version("0.2.0")
   .addHelpText("after", `
 OVERVIEW
   Fetches health and fitness data live from the Garmin Connect API.
