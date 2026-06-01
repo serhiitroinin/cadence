@@ -4,9 +4,12 @@ const SERVICE = "cadence";
 
 export function setSecret(account: string, value: string): void {
   try {
+    if (value.includes("\n")) {
+      throw new Error("Secret must not contain a newline.");
+    }
     execFileSync("security", [
-      "add-generic-password", "-s", SERVICE, "-a", account, "-w", value, "-U",
-    ], { stdio: "pipe" });
+      "add-generic-password", "-U", "-s", SERVICE, "-a", account, "-w",
+    ], { input: `${value}\n${value}\n`, stdio: ["pipe", "ignore", "ignore"] });
   } catch (e: unknown) {
     throw new Error(
       `Failed to store secret in Keychain (account=${account}): ${(e as Error).message}`

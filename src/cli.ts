@@ -4,6 +4,7 @@ import { getSecret, hasSecret, deleteSecret } from "./lib/keychain.ts";
 import * as out from "./lib/output.ts";
 import { login, importTokens } from "./auth.ts";
 import { importFromLuff } from "./lib/import-luff.ts";
+import { readSecret } from "./lib/prompt.ts";
 import { garminProvider } from "./providers/garmin.ts";
 import type { FitnessProvider } from "./types.ts";
 
@@ -178,18 +179,24 @@ EXAMPLES
 // ── Auth commands ────────────────────────────────────────────────
 
 program
-  .command("login <email> <password>")
-  .description("Login to Garmin Connect via SSO + OAuth token exchange")
+  .command("login <email>")
+  .description("Login to Garmin Connect via SSO + OAuth token exchange (password prompted securely)")
   .addHelpText("after", `
 Details:
   Performs full Garmin authentication: OAuth1 HMAC-SHA1 signing → SSO login
-  with email/password → OAuth2 token exchange. All tokens are stored in
+  with email/password → OAuth2 token exchange. The password is prompted
+  securely (never passed as an argument). All tokens are stored in
   macOS Keychain (service: cadence). OAuth1 tokens last ~1 year;
   OAuth2 access tokens ~24h (auto-refreshed on each API call).
 
 Example:
-  cadence login user@example.com MyPassword123`)
-  .action(async (email: string, password: string) => {
+  cadence login user@example.com`)
+  .action(async (email: string) => {
+    const password = await readSecret("Garmin Connect password: ");
+    if (!password) {
+      out.error("No password provided.");
+      process.exit(1);
+    }
     await login(email, password);
   });
 
