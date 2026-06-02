@@ -1,6 +1,6 @@
 {
   "name": "cadence",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Garmin Connect CLI — training readiness, sleep, HRV, body battery, activities",
   "module": "src/cli.ts",
   "type": "module",
