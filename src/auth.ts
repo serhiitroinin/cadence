@@ -108,11 +108,11 @@ interface Consumer {
 }
 
 async function getConsumer(): Promise<Consumer> {
-  const cached = getSecret("consumer-key");
+  const cached = await getSecret("consumer-key");
   if (cached) {
     return {
       consumer_key: cached,
-      consumer_secret: requireSecret("consumer-secret"),
+      consumer_secret: await requireSecret("consumer-secret"),
     };
   }
 
@@ -120,8 +120,8 @@ async function getConsumer(): Promise<Consumer> {
   if (!res.ok) throw new Error(`Failed to fetch consumer credentials: ${res.status}`);
   const consumer = (await res.json()) as Consumer;
 
-  setSecret("consumer-key", consumer.consumer_key);
-  setSecret("consumer-secret", consumer.consumer_secret);
+  await setSecret("consumer-key", consumer.consumer_key);
+  await setSecret("consumer-secret", consumer.consumer_secret);
 
   return consumer;
 }
@@ -216,8 +216,8 @@ export async function login(email: string, password: string): Promise<void> {
     throw new Error("Failed to extract OAuth1 tokens from response");
   }
 
-  setSecret("oauth1-token", oauthToken);
-  setSecret("oauth1-secret", oauthTokenSecret);
+  await setSecret("oauth1-token", oauthToken);
+  await setSecret("oauth1-secret", oauthTokenSecret);
 
   // Step 5: Exchange OAuth1 for OAuth2
   await exchangeOAuth2(consumer, oauthToken, oauthTokenSecret);
@@ -263,32 +263,32 @@ async function exchangeOAuth2(
   };
 
   const now = Math.floor(Date.now() / 1000);
-  setSecret("access-token", data.access_token);
-  setSecret("refresh-token", data.refresh_token);
-  setSecret("expires-at", String(now + data.expires_in - 60));
-  setSecret("refresh-expires-at", String(now + data.refresh_token_expires_in - 60));
+  await setSecret("access-token", data.access_token);
+  await setSecret("refresh-token", data.refresh_token);
+  await setSecret("expires-at", String(now + data.expires_in - 60));
+  await setSecret("refresh-expires-at", String(now + data.refresh_token_expires_in - 60));
 }
 
 // ── Token management ─────────────────────────────────────────────
 
 export async function getValidAccessToken(): Promise<string> {
-  const accessToken = getSecret("access-token");
+  const accessToken = await getSecret("access-token");
   if (!accessToken) throw new Error("Not logged in. Run: cadence login");
 
-  const expiresAt = parseInt(getSecret("expires-at") ?? "0", 10);
+  const expiresAt = parseInt(await getSecret("expires-at") ?? "0", 10);
   const now = Math.floor(Date.now() / 1000);
 
   if (now < expiresAt) {
     return accessToken;
   }
 
-  const oauth1Token = getSecret("oauth1-token");
-  const oauth1Secret = getSecret("oauth1-secret");
+  const oauth1Token = await getSecret("oauth1-token");
+  const oauth1Secret = await getSecret("oauth1-secret");
   if (!oauth1Token || !oauth1Secret) {
     throw new Error("OAuth1 tokens missing. Run: cadence login");
   }
 
-  const refreshExpiresAt = parseInt(getSecret("refresh-expires-at") ?? "0", 10);
+  const refreshExpiresAt = parseInt(await getSecret("refresh-expires-at") ?? "0", 10);
   if (now >= refreshExpiresAt) {
     throw new Error("Refresh token expired. Run: cadence login");
   }
@@ -296,12 +296,12 @@ export async function getValidAccessToken(): Promise<string> {
   const consumer = await getConsumer();
   await exchangeOAuth2(consumer, oauth1Token, oauth1Secret);
 
-  return requireSecret("access-token");
+  return await requireSecret("access-token");
 }
 
 // ── Import tokens from garth/garmy ───────────────────────────────
 
-export function importTokens(dir: string): void {
+export async function importTokens(dir: string): Promise<void> {
   const fs = require("fs");
   const path = require("path");
 
@@ -314,12 +314,12 @@ export function importTokens(dir: string): void {
   const oauth1 = JSON.parse(fs.readFileSync(oauth1Path, "utf-8"));
   const oauth2 = JSON.parse(fs.readFileSync(oauth2Path, "utf-8"));
 
-  setSecret("oauth1-token", oauth1.oauth_token);
-  setSecret("oauth1-secret", oauth1.oauth_token_secret);
-  setSecret("access-token", oauth2.access_token);
-  setSecret("refresh-token", oauth2.refresh_token);
-  setSecret("expires-at", String(oauth2.expires_at));
-  setSecret("refresh-expires-at", String(oauth2.refresh_token_expires_at));
+  await setSecret("oauth1-token", oauth1.oauth_token);
+  await setSecret("oauth1-secret", oauth1.oauth_token_secret);
+  await setSecret("access-token", oauth2.access_token);
+  await setSecret("refresh-token", oauth2.refresh_token);
+  await setSecret("expires-at", String(oauth2.expires_at));
+  await setSecret("refresh-expires-at", String(oauth2.refresh_token_expires_at));
 
   console.log("Tokens imported to Keychain from", dir);
 }

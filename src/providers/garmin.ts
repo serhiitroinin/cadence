@@ -55,7 +55,7 @@ async function apiGet<T>(path: string, params?: Record<string, string>): Promise
 }
 
 async function getDisplayName(): Promise<string> {
-  const cached = getSecret("display-name");
+  const cached = await getSecret("display-name");
   if (cached) return cached;
 
   const profile = await apiGet<{ displayName?: string; userName?: string }>(
@@ -64,19 +64,19 @@ async function getDisplayName(): Promise<string> {
   const name = profile?.displayName || profile?.userName;
   if (!name) throw new Error("Could not determine display name from profile");
 
-  setSecret("display-name", name);
+  await setSecret("display-name", name);
   return name;
 }
 
 async function getProfilePk(): Promise<number> {
-  const cached = getSecret("profile-pk");
+  const cached = await getSecret("profile-pk");
   if (cached) return parseInt(cached, 10);
 
   const profile = await apiGet<any>("/userprofile-service/socialProfile");
   const pk = profile?.userProfilePK ?? profile?.profileId;
   if (!pk) throw new Error("Could not determine profile PK from social profile");
 
-  setSecret("profile-pk", String(pk));
+  await setSecret("profile-pk", String(pk));
   return pk;
 }
 

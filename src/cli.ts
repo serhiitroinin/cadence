@@ -3,7 +3,6 @@ import { Command } from "commander";
 import { getSecret, hasSecret, deleteSecret } from "./lib/keychain.ts";
 import * as out from "./lib/output.ts";
 import { login, importTokens } from "./auth.ts";
-import { importFromLuff } from "./lib/import-luff.ts";
 import { readSecret } from "./lib/prompt.ts";
 import { garminProvider } from "./providers/garmin.ts";
 import { secToH, secToMin, secToHMS, km, n, mps } from "./format.ts";
@@ -18,7 +17,7 @@ const program = new Command();
 program
   .name("cadence")
   .description("Garmin Connect data CLI — training, sleep, HRV, body battery, activities")
-  .version("0.2.1")
+  .version("0.3.0")
   .addHelpText("after", `
 OVERVIEW
   Fetches health and fitness data live from the Garmin Connect API.
@@ -177,8 +176,8 @@ Details:
 Example:
   cadence import-tokens              Import from ~/.garmy (default)
   cadence import-tokens ~/garth      Import from custom directory`)
-  .action((dir?: string) => {
-    importTokens(dir ?? `${process.env.HOME}/.garmy`);
+  .action(async (dir?: string) => {
+    await importTokens(dir ?? `${process.env.HOME}/.garmy`);
   });
 
 program
@@ -199,17 +198,17 @@ Output fields:
 Example:
   cadence status`)
   .action(async () => {
-    if (!hasSecret("oauth1-token")) {
+    if (!(await hasSecret("oauth1-token"))) {
       out.info("Not logged in. Run: cadence login <email>");
       out.info("Or import existing tokens: cadence import-tokens");
       return;
     }
 
-    const expiresAt = parseInt(getSecret("expires-at") ?? "0", 10);
-    const refreshExpiresAt = parseInt(getSecret("refresh-expires-at") ?? "0", 10);
+    const expiresAt = parseInt((await getSecret("expires-at")) ?? "0", 10);
+    const refreshExpiresAt = parseInt((await getSecret("refresh-expires-at")) ?? "0", 10);
     const now = Math.floor(Date.now() / 1000);
 
-    const displayName = getSecret("display-name") ?? "not cached yet";
+    const displayName = (await getSecret("display-name")) ?? "not cached yet";
 
     console.log(`User:    ${displayName}`);
 
@@ -241,43 +240,15 @@ Details:
 
 Example:
   cadence logout`)
-  .action(() => {
+  .action(async () => {
     for (const key of [
       "oauth1-token", "oauth1-secret", "access-token", "refresh-token",
       "expires-at", "refresh-expires-at", "consumer-key", "consumer-secret",
       "display-name", "profile-pk",
     ]) {
-      deleteSecret(key);
+      await deleteSecret(key);
     }
     out.success("All Garmin credentials removed from Keychain.");
-  });
-
-program
-  .command("auth-import-from-luff")
-  .description("One-shot: copy Garmin auth from legacy luff-garmin Keychain entry")
-  .addHelpText("after", `
-Details:
-  For users migrating from the older 'garmin' CLI shipped via the luff
-  monorepo. Reads all credentials stored under the 'luff-garmin' Keychain
-  service and copies them to 'cadence'. Idempotent — re-run is safe.
-
-  The source entries are NOT deleted; remove them manually with:
-    security delete-generic-password -s luff-garmin -a <account>
-
-Example:
-  cadence auth-import-from-luff`)
-  .action(() => {
-    const { copied, missing } = importFromLuff();
-    if (copied.length === 0) {
-      out.error("No entries found under luff-garmin. Nothing to import.");
-      process.exit(1);
-    }
-    out.success(`Imported ${copied.length} entries from luff-garmin:`);
-    for (const k of copied) console.log(`  + ${k}`);
-    if (missing.length > 0) {
-      out.blank();
-      out.info(`Missing (not present in luff-garmin): ${missing.join(", ")}`);
-    }
   });
 
 // ── Core data commands ──────────────────────────────────────────

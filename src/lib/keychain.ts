@@ -1,34 +1,19 @@
-import { execFileSync } from "node:child_process";
+// Credentials are stored in the OS keychain via Bun's native secrets API
+// (macOS Keychain through Security.framework) — no secret ever passes through
+// argv or a subprocess.
 
 const SERVICE = "cadence";
 
-export function setSecret(account: string, value: string): void {
-  try {
-    // Pass the secret via argv (-w value): macOS `security` reading the password from
-    // a stdin/tty prompt truncates at ~128 chars, which silently corrupts OAuth tokens.
-    execFileSync("security", [
-      "add-generic-password", "-s", SERVICE, "-a", account, "-w", value, "-U",
-    ], { stdio: "pipe" });
-  } catch (e: unknown) {
-    throw new Error(
-      `Failed to store secret in Keychain (account=${account}): ${(e as Error).message}`
-    );
-  }
+export async function setSecret(account: string, value: string): Promise<void> {
+  await Bun.secrets.set({ service: SERVICE, name: account, value });
 }
 
-export function getSecret(account: string): string | null {
-  try {
-    const result = execFileSync("security", [
-      "find-generic-password", "-s", SERVICE, "-a", account, "-w",
-    ], { stdio: "pipe", encoding: "utf-8" });
-    return result.trim();
-  } catch {
-    return null;
-  }
+export async function getSecret(account: string): Promise<string | null> {
+  return await Bun.secrets.get({ service: SERVICE, name: account });
 }
 
-export function requireSecret(account: string): string {
-  const value = getSecret(account);
+export async function requireSecret(account: string): Promise<string> {
+  const value = await getSecret(account);
   if (value === null) {
     throw new Error(
       `No secret found in Keychain for account "${account}". Run: ${SERVICE} login`
@@ -37,17 +22,10 @@ export function requireSecret(account: string): string {
   return value;
 }
 
-export function deleteSecret(account: string): boolean {
-  try {
-    execFileSync("security", [
-      "delete-generic-password", "-s", SERVICE, "-a", account,
-    ], { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
-  }
+export async function deleteSecret(account: string): Promise<boolean> {
+  return await Bun.secrets.delete({ service: SERVICE, name: account });
 }
 
-export function hasSecret(account: string): boolean {
-  return getSecret(account) !== null;
+export async function hasSecret(account: string): Promise<boolean> {
+  return (await getSecret(account)) !== null;
 }
