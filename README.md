@@ -31,7 +31,7 @@ Date        Status      Focus          Acute  Chronic  ACWR  VO2
 ## Requirements
 
 - macOS (uses Keychain for credential storage)
-- [Bun](https://bun.sh) ≥ 1.0
+- [Bun](https://bun.sh) ≥ 1.3.9 — uses the native `Bun.secrets` keychain API
 - A [Garmin Connect](https://connect.garmin.com) account with at least one synced device
 - **MFA must be disabled** — or use the `import-tokens` workflow (see below)
 

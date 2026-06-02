@@ -7,11 +7,11 @@ F="$DIR/fixtures"
 
 case "${1:-}" in
   ""|--help|-h)        cat "$F/help.txt" ;;
-  --version|-V)        echo "0.1.0" ;;
+  --version|-V)        echo "0.3.0" ;;
   tr|training-readiness) cat "$F/tr.txt" ;;
   ts|training-status)  cat "$F/ts.txt" ;;
   bb|body-battery)     cat "$F/bb.txt" ;;
   sleep)               cat "$F/sleep.txt" ;;
-  status)              echo "Not logged in. Run: cadence login <email> <password>" ;;
+  status)              echo "Not logged in. Run: cadence login <email>" ;;
   *) echo "demo: unknown subcommand: $1" >&2; exit 1 ;;
 esac

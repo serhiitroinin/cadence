@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name("cadence")
   .description("Garmin Connect data CLI — training, sleep, HRV, body battery, activities")
-  .version("0.3.0")
+  .version("0.3.1")
   .addHelpText("after", `
 OVERVIEW
   Fetches health and fitness data live from the Garmin Connect API.
@@ -27,7 +27,7 @@ OVERVIEW
 
 COMMAND CATEGORIES
   Auth:
-    login <email> <pw>     Full SSO login (OAuth1 → SSO → OAuth2)
+    login <email>          Full SSO login (password prompted; OAuth1 → SSO → OAuth2)
     import-tokens [dir]    One-time migration from garth/garmy tokens
     status                 Check token validity and expiry
     logout                 Remove all credentials from Keychain

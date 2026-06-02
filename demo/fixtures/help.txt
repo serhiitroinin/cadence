@@ -7,8 +7,8 @@ Options:
   -h, --help                    display help for command
 
 Commands:
-  login <email> <password>      Login to Garmin Connect via SSO + OAuth token
-                                exchange
+  login <email>                 Login to Garmin Connect via SSO + OAuth token
+                                exchange (password prompted securely)
   import-tokens [dir]           Import tokens from a garth/garmy directory
                                 (default: ~/.garmy)
   status                        Check authentication status and token expiry
@@ -19,6 +19,8 @@ Commands:
   sleep [days]                  Sleep score (0–100), stages
                                 (REM/Deep/Light/Awake), duration
   heart-rate|hr [days]          Resting heart rate, daily min/max, 7-day average
+  hr-recent|hrl [options]       Latest heart rate sample from Garmin Connect
+                                (2-min granularity)
   hrv [days]                    Heart rate variability — nightly avg, weekly
                                 avg, baseline, status
   stress [days]                 Daily stress levels (0–100) with qualifier
@@ -66,7 +68,7 @@ OVERVIEW
 
 COMMAND CATEGORIES
   Auth:
-    login <email> <pw>     Full SSO login (OAuth1 → SSO → OAuth2)
+    login <email>          Full SSO login (password prompted; OAuth1 → SSO → OAuth2)
     import-tokens [dir]    One-time migration from garth/garmy tokens
     status                 Check token validity and expiry
     logout                 Remove all credentials from Keychain
