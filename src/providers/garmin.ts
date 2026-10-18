@@ -25,6 +25,7 @@ import type {
   ActivityHrZone,
   PersonalRecord,
   GearItem,
+  ScheduledWorkout,
 } from "../types.ts";
 
 const BASE_URL = "https://connectapi.garmin.com";
@@ -32,7 +33,12 @@ const UA = "com.garmin.android.apps.connectmobile";
 
 // ── API helpers ──────────────────────────────────────────────────
 
-async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+async function apiRequest<T>(
+  method: string,
+  path: string,
+  params?: Record<string, string>,
+  body?: unknown
+): Promise<T> {
   const token = await getValidAccessToken();
   let url = `${BASE_URL}${path}`;
   if (params) {
@@ -40,18 +46,28 @@ async function apiGet<T>(path: string, params?: Record<string, string>): Promise
     if (qs) url += `?${qs}`;
   }
 
+  const headers: Record<string, string> = {
+    "User-Agent": UA,
+    Authorization: `Bearer ${token}`,
+  };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+
   const res = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Authorization: `Bearer ${token}`,
-    },
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (res.status === 204) return undefined as T;
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status} GET ${path}: ${await res.text()}`);
+    throw new Error(`HTTP ${res.status} ${method} ${path}: ${await res.text()}`);
   }
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+  return apiRequest<T>("GET", path, params);
 }
 
 async function getDisplayName(): Promise<string> {
@@ -698,7 +714,80 @@ export const garminProvider: FitnessProvider = {
 
   // ── Raw JSON ──────────────────────────────────────────────────
 
-  async json(path, params) {
-    return apiGet(path, params);
+  async json(path, params, method = "GET", body) {
+    return apiRequest(method, path, params, body);
+  },
+
+  // ── Workouts ──────────────────────────────────────────────────
+
+  async workouts(limit) {
+    const raw = await apiGet<any[]>("/workout-service/workouts", {
+      start: "0",
+      limit: String(limit),
+    });
+    return (raw ?? []).map((w) => ({
+      id: w.workoutId,
+      name: w.workoutName ?? "",
+      sport: w.sportType?.sportTypeKey ?? "",
+      description: w.description ?? null,
+      updated: (w.updateDate ?? w.updatedDate ?? "").slice(0, 10),
+    }));
+  },
+
+  async workout(id) {
+    return apiGet<Record<string, unknown>>(`/workout-service/workout/${id}`);
+  },
+
+  async createWorkout(workout) {
+    const res = await apiRequest<any>("POST", "/workout-service/workout", undefined, workout);
+    if (!res?.workoutId) throw new Error("Garmin did not return a workoutId");
+    return res.workoutId as number;
+  },
+
+  async updateWorkout(id, workout) {
+    // PUT replaces the whole workout; Garmin needs the id and owner in the body.
+    const current = await apiGet<any>(`/workout-service/workout/${id}`);
+    await apiRequest("PUT", `/workout-service/workout/${id}`, undefined, {
+      ...workout,
+      workoutId: id,
+      ownerId: current.ownerId,
+    });
+  },
+
+  async deleteWorkout(id) {
+    await apiRequest("DELETE", `/workout-service/workout/${id}`);
+  },
+
+  async scheduleWorkout(id, date) {
+    const res = await apiRequest<any>("POST", `/workout-service/schedule/${id}`, undefined, { date });
+    return res?.workoutScheduleId ?? 0;
+  },
+
+  async unscheduleWorkout(scheduleId) {
+    await apiRequest("DELETE", `/workout-service/schedule/${scheduleId}`);
+  },
+
+  async scheduledWorkouts(from, to) {
+    // Calendar is fetched per month; months are 0-indexed in the path.
+    const results: ScheduledWorkout[] = [];
+    const cursor = new Date(`${from.slice(0, 7)}-01T00:00:00Z`);
+    const end = new Date(`${to}T00:00:00Z`);
+    while (cursor <= end) {
+      const raw = await apiGet<any>(
+        `/calendar-service/year/${cursor.getUTCFullYear()}/month/${cursor.getUTCMonth()}`
+      );
+      for (const i of raw?.calendarItems ?? []) {
+        if (i.itemType !== "workout" || i.date < from || i.date > to) continue;
+        results.push({
+          date: i.date,
+          scheduleId: i.id,
+          workoutId: i.workoutId,
+          name: i.title ?? "",
+          sport: i.sportTypeKey ?? "",
+        });
+      }
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+    return results.sort((a, b) => a.date.localeCompare(b.date));
   },
 };

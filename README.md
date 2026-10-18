@@ -121,11 +121,49 @@ This reads `oauth1_token.json` + `oauth2_token.json` and copies them into Keycha
 | `cadence records` | `prs` | Personal records |
 | `cadence gear` |  | Equipment usage |
 
+### Workouts
+
+Structured workouts you create here land in Garmin Connect and sync to the watch.
+
+| Command | Description |
+|---|---|
+| `cadence workouts` | List saved workouts |
+| `cadence workout show <id>` | Steps of a workout (`--json` for raw) |
+| `cadence workout create <file> [--date D]` | Create from a spec or raw Garmin JSON, optionally schedule |
+| `cadence workout update <id> <file>` | Replace a workout, keeping its calendar entries |
+| `cadence workout delete <id...>` | Delete workouts and their calendar entries |
+| `cadence workout schedule <id> <date>` | Put a workout on the calendar |
+| `cadence workout unschedule <scheduleId>` | Remove a calendar entry |
+| `cadence workout convert <file>` | Print the Garmin JSON a spec produces |
+| `cadence scheduled [from] [to]` | Calendar workouts, default next 28 days |
+| `cadence plan push <file> [--dry-run] [--replace]` | Create and schedule a whole plan |
+| `cadence plan remove <plan>` | Delete every workout a plan created |
+
+A spec is compact JSON; `cadence workout --help` documents every field.
+
+```json
+{
+  "name": "Intervals 5x1k",
+  "sport": "running",
+  "steps": [
+    { "type": "warmup", "time": "10:00", "hrZone": 2 },
+    { "repeat": 5, "steps": [
+      { "type": "interval", "distance": "1km", "pace": ["4:50", "5:00"], "hr": [150, 172] },
+      { "type": "recovery", "time": "2:00" }
+    ]},
+    { "type": "cooldown", "lap": true }
+  ]
+}
+```
+
+A plan file is `{ "plan": "<id>", "workouts": [ { "date": "YYYY-MM-DD", ...spec } ] }`. Each pushed workout gets `[cadence:<id>]` in its description, which is how `plan remove` and `plan push --replace` find them again.
+
 ### Raw API
 
 | Command | Description |
 |---|---|
 | `cadence json <path> [k=v ...]` | Raw JSON from any Garmin Connect endpoint |
+| `cadence json -X POST -d @body.json <path>` | Write to an endpoint (`-X PUT/DELETE`, `-d` inline JSON or `@file`) |
 
 ## Metric reference
 

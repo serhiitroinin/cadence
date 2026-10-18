@@ -7,6 +7,7 @@ import { readSecret } from "./lib/prompt.ts";
 import { garminProvider } from "./providers/garmin.ts";
 import { secToH, secToMin, secToHMS, km, n, mps } from "./format.ts";
 import type { FitnessProvider } from "./types.ts";
+import { toGarmin, withPlanMarker, planMarker, validatePlan, type PlanSpec } from "./workout.ts";
 
 const provider: FitnessProvider = garminProvider;
 
@@ -17,7 +18,7 @@ const program = new Command();
 program
   .name("cadence")
   .description("Garmin Connect data CLI — training, sleep, HRV, body battery, activities")
-  .version("0.3.2")
+  .version("0.4.0")
   .addHelpText("after", `
 OVERVIEW
   Fetches health and fitness data live from the Garmin Connect API.
@@ -60,8 +61,22 @@ COMMAND CATEGORIES
     records|prs            Personal records (fastest times, farthest distances)
     gear                   Equipment tracking (shoes, etc.)
 
+  Workouts (write to Garmin Connect, sync to the watch):
+    workouts               List saved workouts
+    workout show <id>      Steps of a workout (--json for raw)
+    workout create <file>  Create from a spec or raw JSON (--date to schedule)
+    workout update <id> <file>  Replace a workout's steps
+    workout delete <id...> Delete workouts
+    workout schedule <id> <date>     Put a workout on the calendar
+    workout unschedule <scheduleId>  Remove a calendar entry
+    workout convert <file> Print the Garmin JSON a spec produces
+    scheduled [from] [to]  Workouts on the calendar (default: next 28 days)
+    plan push <file>       Create + schedule every workout in a plan file
+    plan remove <plan>     Delete every workout a plan created
+
   Raw API:
     json <path> [k=v ...]  Raw JSON from any Garmin Connect API endpoint
+                           (-X POST|PUT|DELETE, -d <json|@file> to write)
 
 METRIC QUICK REFERENCE
   Training Readiness (0–100):
@@ -1345,6 +1360,257 @@ Examples:
     }
   });
 
+// ── Workouts ────────────────────────────────────────────────────
+
+const SPEC_HELP = `
+Spec format (JSON; "-" reads stdin):
+  {
+    "name": "Intervals 5x1k",
+    "sport": "running",              running | cycling | strength_training |
+                                     cardio_training | swimming | hiit | yoga | other
+    "description": "shown on the watch",
+    "steps": [
+      { "type": "warmup", "time": "10:00", "hrZone": 2 },
+      { "repeat": 5, "steps": [
+        { "type": "interval", "distance": "1km", "pace": ["4:50", "5:00"] },
+        { "type": "recovery", "time": "2:00", "note": "walk or jog" }
+      ]},
+      { "type": "cooldown", "lap": true }
+    ]
+  }
+
+  Step types:  warmup, cooldown, interval (default), recovery, rest, other
+  End:         time "m:ss"|"h:mm:ss"|seconds, distance "5km"|"400m"|metres,
+               reps n (strength), lap true (default: ends on LAP press)
+  Targets:     hr [lo, hi] bpm, hrZone n, pace ["m:ss", "m:ss"] per km,
+               power [lo, hi] W, cadence [lo, hi] spm. Max two per step; the
+               first (or "primary": "pace") drives alerts, the other is shown.
+  Strength:    category + exercise (Garmin exercise keys), weightKg
+  Raw Garmin JSON (has "workoutSegments") is accepted unchanged.`;
+
+async function readJsonFile(file: string): Promise<any> {
+  const text = file === "-" ? await Bun.stdin.text() : await Bun.file(file).text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(`${file}: invalid JSON (${(e as Error).message})`);
+  }
+}
+
+function assertDate(date: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`Bad date "${date}" (use YYYY-MM-DD)`);
+  return date;
+}
+
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function stepRows(steps: any[], depth = 0): string[][] {
+  const rows: string[][] = [];
+  for (const s of steps) {
+    const indent = "  ".repeat(depth);
+    if (s.type === "RepeatGroupDTO") {
+      rows.push([`${indent}${s.stepOrder}`, `repeat x${s.numberOfIterations}`, "", "", ""]);
+      rows.push(...stepRows(s.workoutSteps ?? [], depth + 1));
+      continue;
+    }
+    const end = s.endCondition?.conditionTypeKey;
+    const endText =
+      end === "time" ? secToHMS(s.endConditionValue) :
+      end === "distance" ? km(s.endConditionValue) :
+      end === "reps" ? `${s.endConditionValue} reps` :
+      end === "lap.button" ? "lap" : end ?? "";
+    const target = (key: string | undefined, one: number | null, two: number | null, zone: number | null) => {
+      if (!key || key === "no.target") return "";
+      if (zone) return `${key === "heart.rate.zone" ? "HR" : key} zone ${zone}`;
+      if (key === "pace.zone") return `pace ${mps(one ?? 0).replace("/km", "")}–${mps(two ?? 0)}`;
+      if (key === "heart.rate.zone") return `HR ${one}–${two}`;
+      return `${key.replace(".zone", "")} ${one}–${two}`;
+    };
+    rows.push([
+      `${indent}${s.stepOrder}`,
+      s.stepType?.stepTypeKey ?? "",
+      endText,
+      [
+        target(s.targetType?.workoutTargetTypeKey, s.targetValueOne, s.targetValueTwo, s.zoneNumber),
+        target(s.secondaryTargetType?.workoutTargetTypeKey, s.secondaryTargetValueOne, s.secondaryTargetValueTwo, s.secondaryZoneNumber),
+      ].filter(Boolean).join(" · "),
+      s.exerciseName ?? s.description ?? "",
+    ]);
+  }
+  return rows;
+}
+
+program
+  .command("workouts")
+  .description("List saved workouts in Garmin Connect")
+  .option("-n, --limit <n>", "how many to list", "50")
+  .action(async (opts: { limit: string }) => {
+    const list = await provider.workouts(parseInt(opts.limit, 10));
+    out.heading(`Workouts — ${list.length}`);
+    out.blank();
+    out.table(
+      ["ID", "Name", "Sport", "Updated"],
+      list.map((w) => [w.id, w.name, w.sport, w.updated])
+    );
+  });
+
+const workout = program
+  .command("workout")
+  .description("Create, update, schedule and delete structured workouts")
+  .addHelpText("after", SPEC_HELP);
+
+workout
+  .command("show <id>")
+  .description("Show a workout's steps")
+  .option("--json", "print raw Garmin JSON")
+  .action(async (id: string, opts: { json?: boolean }) => {
+    const w: any = await provider.workout(Number(id));
+    if (opts.json) return out.json(w);
+    out.heading(`${w.workoutName} (${w.sportType?.sportTypeKey ?? ""}, id ${w.workoutId})`);
+    if (w.description) out.info(w.description);
+    out.blank();
+    out.table(
+      ["#", "Type", "End", "Target", "Note"],
+      stepRows(w.workoutSegments?.[0]?.workoutSteps ?? [])
+    );
+  });
+
+workout
+  .command("convert <file>")
+  .description("Print the Garmin JSON a spec produces (no upload)")
+  .action(async (file: string) => {
+    out.json(toGarmin(await readJsonFile(file)));
+  });
+
+workout
+  .command("create <file>")
+  .description("Create a workout from a spec or raw Garmin JSON")
+  .option("--date <YYYY-MM-DD>", "also schedule it on this date")
+  .addHelpText("after", SPEC_HELP)
+  .action(async (file: string, opts: { date?: string }) => {
+    const body = toGarmin(await readJsonFile(file));
+    const date = opts.date ? assertDate(opts.date) : undefined;
+    const id = await provider.createWorkout(body);
+    out.success(`Created workout ${id}: ${body.workoutName}`);
+    if (date) {
+      const sid = await provider.scheduleWorkout(id, date);
+      out.success(`Scheduled on ${date} (schedule ${sid})`);
+    }
+  });
+
+workout
+  .command("update <id> <file>")
+  .description("Replace a workout with a spec or raw Garmin JSON (keeps its calendar entries)")
+  .action(async (id: string, file: string) => {
+    const body = toGarmin(await readJsonFile(file));
+    await provider.updateWorkout(Number(id), body);
+    out.success(`Updated workout ${id}: ${body.workoutName}`);
+  });
+
+workout
+  .command("delete <ids...>")
+  .description("Delete workouts (their calendar entries go too)")
+  .action(async (ids: string[]) => {
+    for (const id of ids) {
+      await provider.deleteWorkout(Number(id));
+      out.success(`Deleted workout ${id}`);
+    }
+  });
+
+workout
+  .command("schedule <id> <date>")
+  .description("Put a workout on the calendar (YYYY-MM-DD)")
+  .action(async (id: string, date: string) => {
+    const sid = await provider.scheduleWorkout(Number(id), assertDate(date));
+    out.success(`Scheduled workout ${id} on ${date} (schedule ${sid})`);
+  });
+
+workout
+  .command("unschedule <scheduleId>")
+  .description("Remove a calendar entry (the workout itself stays); ids from 'cadence scheduled'")
+  .action(async (scheduleId: string) => {
+    await provider.unscheduleWorkout(Number(scheduleId));
+    out.success(`Removed schedule ${scheduleId}`);
+  });
+
+program
+  .command("scheduled [from] [to]")
+  .description("Workouts on the calendar (default: today + 27 days)")
+  .action(async (from?: string, to?: string) => {
+    const start = from ? assertDate(from) : isoDate(new Date());
+    const end = to ? assertDate(to) : isoDate(new Date(Date.parse(`${start}T12:00:00`) + 27 * 86400000));
+    const list = await provider.scheduledWorkouts(start, end);
+    out.heading(`Scheduled workouts — ${start} to ${end}`);
+    out.blank();
+    out.table(
+      ["Date", "Schedule", "Workout", "Sport", "Name"],
+      list.map((s) => [s.date, s.scheduleId, s.workoutId, s.sport, s.name])
+    );
+  });
+
+const plan = program
+  .command("plan")
+  .description("Push or remove a whole training plan")
+  .addHelpText("after", `
+Plan file:
+  {
+    "plan": "base-2026-11",
+    "workouts": [
+      { "date": "2026-11-03", "name": "Easy 8k", "steps": [ ... ] },
+      ...
+    ]
+  }
+
+  Each workout uses the 'cadence workout' spec format plus a date. Every
+  workout gets "[cadence:<plan>]" appended to its description; that marker
+  is how 'plan remove' and 'plan push --replace' find them again.`);
+
+plan
+  .command("push <file>")
+  .description("Create and schedule every workout in a plan file")
+  .option("--dry-run", "validate and list, upload nothing")
+  .option("--replace", "first delete workouts this plan created earlier")
+  .action(async (file: string, opts: { dryRun?: boolean; replace?: boolean }) => {
+    const spec = (await readJsonFile(file)) as PlanSpec;
+    validatePlan(spec);
+    const marker = planMarker(spec.plan);
+    const existing = (await provider.workouts(1000)).filter((w) => w.description?.includes(marker));
+
+    if (opts.dryRun) {
+      out.heading(`Plan ${spec.plan} — ${spec.workouts.length} workouts (dry run)`);
+      if (existing.length) out.info(`${existing.length} workouts from this plan already exist in Garmin Connect`);
+      out.blank();
+      out.table(["Date", "Sport", "Name"], spec.workouts.map((w) => [w.date, w.sport ?? "running", w.name]));
+      return;
+    }
+    if (existing.length && !opts.replace) {
+      throw new Error(`${existing.length} workouts from plan "${spec.plan}" already exist; use --replace or 'cadence plan remove ${spec.plan}'`);
+    }
+    for (const w of existing) await provider.deleteWorkout(w.id);
+    if (existing.length) out.info(`Removed ${existing.length} earlier workouts from plan ${spec.plan}`);
+
+    for (const w of spec.workouts) {
+      const { date, ...rest } = w;
+      const id = await provider.createWorkout(withPlanMarker(toGarmin(rest as any), spec.plan));
+      await provider.scheduleWorkout(id, date);
+      out.success(`${date}  ${id}  ${w.name}`);
+    }
+    out.blank();
+    out.info(`Pushed ${spec.workouts.length} workouts. Sync the watch to load them.`);
+  });
+
+plan
+  .command("remove <plan>")
+  .description("Delete every workout a plan created (and their calendar entries)")
+  .action(async (name: string) => {
+    const marker = planMarker(name);
+    const mine = (await provider.workouts(1000)).filter((w) => w.description?.includes(marker));
+    for (const w of mine) await provider.deleteWorkout(w.id);
+    out.success(`Deleted ${mine.length} workouts from plan ${name}`);
+  });
+
 // ── Raw JSON ────────────────────────────────────────────────────
 
 program
@@ -1364,14 +1630,23 @@ Examples:
   cadence json /fitnessstats
   cadence json /usersummary-service/usersummary/daily/USERNAME
   cadence json /weight-service/weight/dateRange startDate=2026-01-01 endDate=2026-02-01
-  cadence json /activity-service/activity/18765432`)
-  .action(async (path: string, params: string[]) => {
+  cadence json /activity-service/activity/18765432
+  cadence json -X DELETE /workout-service/schedule/1808967522
+  cadence json -X POST -d @workout.json /workout-service/workout`)
+  .option("-X, --method <method>", "HTTP method", "GET")
+  .option("-d, --data <json>", "request body: inline JSON or @file")
+  .action(async (path: string, params: string[], opts: { method: string; data?: string }) => {
     const paramMap: Record<string, string> = {};
     for (const p of params) {
       const [k, v] = p.split("=");
       if (k && v) paramMap[k] = v;
     }
-    out.json(await provider.json(path, Object.keys(paramMap).length ? paramMap : undefined));
+    let body: unknown;
+    if (opts.data !== undefined) {
+      body = opts.data.startsWith("@") ? await readJsonFile(opts.data.slice(1)) : JSON.parse(opts.data);
+    }
+    const res = await provider.json(path, Object.keys(paramMap).length ? paramMap : undefined, opts.method.toUpperCase(), body);
+    if (res !== undefined) out.json(res);
   });
 
 // ── Run ──────────────────────────────────────────────────────────

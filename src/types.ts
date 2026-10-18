@@ -234,6 +234,22 @@ export interface GearItem {
   createDate: string;
 }
 
+export interface WorkoutSummary {
+  id: number;
+  name: string;
+  sport: string;
+  description: string | null;
+  updated: string;
+}
+
+export interface ScheduledWorkout {
+  date: string;
+  scheduleId: number;
+  workoutId: number;
+  name: string;
+  sport: string;
+}
+
 /** Every fitness data provider must implement this interface */
 export interface FitnessProvider {
   name: string;
@@ -269,5 +285,15 @@ export interface FitnessProvider {
   gear(): Promise<GearItem[]>;
 
   // Raw
-  json(path: string, params?: Record<string, string>): Promise<unknown>;
+  json(path: string, params?: Record<string, string>, method?: string, body?: unknown): Promise<unknown>;
+
+  // Workouts (write)
+  workouts(limit: number): Promise<WorkoutSummary[]>;
+  workout(id: number): Promise<Record<string, unknown>>;
+  createWorkout(workout: Record<string, unknown>): Promise<number>;
+  updateWorkout(id: number, workout: Record<string, unknown>): Promise<void>;
+  deleteWorkout(id: number): Promise<void>;
+  scheduleWorkout(id: number, date: string): Promise<number>;
+  unscheduleWorkout(scheduleId: number): Promise<void>;
+  scheduledWorkouts(from: string, to: string): Promise<ScheduledWorkout[]>;
 }
