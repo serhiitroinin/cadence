@@ -33,8 +33,8 @@ export function n(v: number | null, decimals = 0): string {
 export function mps(speed: number | null): string {
   if (speed == null) return DASH;
   if (speed <= 0) return DASH;
-  const paceSeconds = 1000 / speed;
+  const paceSeconds = Math.round(1000 / speed);
   const m = Math.floor(paceSeconds / 60);
-  const s = Math.floor(paceSeconds % 60);
+  const s = paceSeconds % 60;
   return `${m}:${String(s).padStart(2, "0")}/km`;
 }

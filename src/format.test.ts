@@ -29,3 +29,8 @@ test("mps converts m/s to min:sec per km pace", () => {
   expect(mps(0)).toBe("—");
   expect(mps(null)).toBe("—");
 });
+
+test("mps rounds to the nearest second instead of flooring", () => {
+  expect(mps(3.4483)).toBe("4:50/km"); // 289.99 s
+  expect(mps(2.7778)).toBe("6:00/km");
+});
